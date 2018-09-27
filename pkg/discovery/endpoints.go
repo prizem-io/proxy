@@ -21,7 +21,8 @@ import (
 	"github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type (
@@ -32,6 +33,7 @@ type (
 	}
 
 	Endpoints struct {
+		logger       log.Logger
 		url          string
 		serivceNodes unsafe.Pointer
 		sourceNodes  unsafe.Pointer
@@ -42,9 +44,10 @@ type (
 	}
 )
 
-func NewEndpoints(baseURL string) *Endpoints {
+func NewEndpoints(logger log.Logger, baseURL string) *Endpoints {
 	return &Endpoints{
-		url: fmt.Sprintf("%s/v1/endpoints", baseURL),
+		logger: logger,
+		url:    fmt.Sprintf("%s/v1/endpoints", baseURL),
 	}
 }
 
@@ -126,7 +129,7 @@ func (e *Endpoints) StoreEndpoints(version int64, nodes []api.Node) bool {
 
 	e.mu.Lock()
 	if version != e.version {
-		log.Infof("Storing endpoints for updated index %d", version)
+		e.logger.Infof("Storing endpoints for updated index %d", version)
 		atomic.StorePointer(&e.serivceNodes, unsafe.Pointer(&serviceNodes))
 		atomic.StorePointer(&e.sourceNodes, unsafe.Pointer(&sourceNodes))
 		atomic.StorePointer(&e.nodeServices, unsafe.Pointer(&nodeServices))
@@ -145,7 +148,7 @@ func (e *Endpoints) RefreshLoop(duration time.Duration, stop chan struct{}) {
 		case <-t:
 			err := e.RequestCatalog()
 			if err != nil {
-				log.Errorf("Error requesting catalog: %v", err)
+				e.logger.Errorf("Error requesting catalog: %v", err)
 			}
 		case <-stop:
 			break

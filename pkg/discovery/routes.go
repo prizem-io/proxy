@@ -19,11 +19,13 @@ import (
 	"github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
 	"github.com/prizem-io/routerstore"
-	log "github.com/sirupsen/logrus"
+
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type (
 	Routes struct {
+		logger   log.Logger
 		url      string
 		policies map[string]proxy.MiddlewareLoader
 
@@ -44,8 +46,9 @@ var (
 	ErrMiddlewareNotFound = errors.New("middleware not found")
 )
 
-func NewRoutes(baseURL string, policies map[string]proxy.MiddlewareLoader) *Routes {
+func NewRoutes(logger log.Logger, baseURL string, policies map[string]proxy.MiddlewareLoader) *Routes {
 	return &Routes{
+		logger:   logger,
 		url:      fmt.Sprintf("%s/v1/routes", baseURL),
 		policies: policies,
 	}
@@ -99,7 +102,7 @@ func (r *Routes) StoreRoutes(version int64, services []api.Service) bool {
 		serviceMap[service.Name] = service
 		middleware, err := r.loadMiddleware(service.Policies)
 		if err != nil {
-			log.Errorf("Policy error in service %s: %v", service.Name, err)
+			r.logger.Errorf("Policy error in service %s: %v", service.Name, err)
 		}
 		service.Middleware = middleware
 
@@ -112,7 +115,7 @@ func (r *Routes) StoreRoutes(version int64, services []api.Service) bool {
 			routes.AddRoute(operation.Method, path, info)
 			middleware, err := r.loadMiddleware(operation.Policies)
 			if err != nil {
-				log.Errorf("Policy error in operation %s/%s: %v", service.Name, operation.Name, err)
+				r.logger.Errorf("Policy error in operation %s/%s: %v", service.Name, operation.Name, err)
 			}
 			operation.Middleware = middleware
 		}
@@ -121,7 +124,7 @@ func (r *Routes) StoreRoutes(version int64, services []api.Service) bool {
 
 	r.mu.Lock()
 	if version != r.version {
-		log.Infof("Storing routes for updated index %d", version)
+		r.logger.Infof("Storing routes for updated index %d", version)
 		atomic.StorePointer(&r.router, unsafe.Pointer(routes))
 		atomic.StorePointer(&r.catalog, unsafe.Pointer(&serviceMap))
 		r.version = version
@@ -139,7 +142,7 @@ func (r *Routes) RefreshLoop(duration time.Duration, stop chan struct{}) {
 		case <-t:
 			err := r.RequestCatalog()
 			if err != nil {
-				log.Errorf("Error requesting catalog: %v", err)
+				r.logger.Errorf("Error requesting catalog: %v", err)
 			}
 		case <-stop:
 			break

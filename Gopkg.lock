@@ -457,7 +457,6 @@
     "github.com/prizem-io/h2/proxy",
     "github.com/prizem-io/routerstore",
     "github.com/satori/go.uuid",
-    "github.com/sirupsen/logrus",
     "github.com/uber/jaeger-client-go/config",
     "go.uber.org/zap",
     "golang.org/x/net/context",
