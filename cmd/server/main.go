@@ -74,8 +74,8 @@ func main() {
 
 	policies := map[string]proxy.MiddlewareLoader{}
 
-	r := discovery.NewRoutes(controlPlaneRESTURI, policies)
-	e := discovery.NewEndpoints(controlPlaneRESTURI)
+	r := discovery.NewRoutes(logger, controlPlaneRESTURI, policies)
+	e := discovery.NewEndpoints(logger, controlPlaneRESTURI)
 	l := discovery.NewLocal()
 	controller := control.New(logger, nodeID.String(), controlPlaneGRPCURI, r, e)
 	err = controller.Connect()
