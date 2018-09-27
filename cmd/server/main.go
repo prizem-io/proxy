@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/istio/api/mixer/v1"
 	"github.com/oklog/run"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -75,22 +76,28 @@ func main() {
 
 	policies := map[string]proxy.MiddlewareLoader{}
 
+	eb := backoff.NewExponentialBackOff()
+
 	r := discovery.NewRoutes(logger, controlPlaneRESTURI, policies)
 	e := discovery.NewEndpoints(logger, controlPlaneRESTURI)
 	l := discovery.NewLocal()
+
+	logger.Infof("Connecting to control plance...")
 	controller := control.New(logger, nodeID.String(), controlPlaneGRPCURI, r, e)
-	err = controller.Connect()
+	err = backoff.Retry(controller.Connect, eb)
 	if err != nil {
 		logger.Fatalf("Could not connect to control plane: %v", err)
 	}
 
-	err = controller.SubscribeToRoutes()
+	eb.Reset()
+	err = backoff.Retry(controller.SubscribeToRoutes, eb)
 	if err != nil {
 		logger.Fatalf("Could not subscribe to routes: %v", err)
 	}
 	defer controller.UnsubscribeFromRoutes()
 
-	err = controller.SubscribeToEndpoints()
+	eb.Reset()
+	err = backoff.Retry(controller.SubscribeToEndpoints, eb)
 	if err != nil {
 		logger.Fatalf("Could not subscribe to endpoints: %v", err)
 	}
@@ -114,7 +121,13 @@ func main() {
 
 	//////
 
-	conn, err := grpc.Dial("localhost:9091", grpc.WithInsecure())
+	logger.Infof("Connecting to Istio...")
+	var conn *grpc.ClientConn
+	eb.Reset()
+	err = backoff.Retry(func() (err error) {
+		conn, err = grpc.Dial("localhost:9091", grpc.WithInsecure())
+		return
+	}, eb)
 	if err != nil {
 		logger.Fatalf("did not connect: %v", err)
 	}

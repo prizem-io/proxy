@@ -10,6 +10,14 @@
   version = "v9"
 
 [[projects]]
+  digest = "1:2209584c0f7c9b68c23374e659357ab546e1b70eec2761f03280f69a8fd23d77"
+  name = "github.com/cenkalti/backoff"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "2ea60e5f094469f9e65adb9cd103795b73ae743e"
+  version = "v2.0.0"
+
+[[projects]]
   branch = "master"
   digest = "1:4c4c33075b704791d6a7f09dfb55c66769e8a1dc6adf87026292d274fe8ad113"
   name = "github.com/codahale/hdrhistogram"
@@ -183,7 +191,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:e6fe1b6b158373933132a62ff1d6a3b82aa2679ac6dd51477c9faec36e928314"
+  digest = "1:9a0d63b32db0cafeeffd13331c7f319c45b6c463233564167fdf7eee4f4c7d57"
   name = "github.com/prizem-io/h2"
   packages = [
     "frames",
@@ -191,7 +199,7 @@
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "c7a58d1e5e1cc175bd66265ba01775dcd230cd66"
+  revision = "80da284ab433c811c68bfe351083822745fae687"
 
 [[projects]]
   branch = "master"
@@ -415,6 +423,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "github.com/cenkalti/backoff",
     "github.com/gogo/protobuf/proto",
     "github.com/golang/protobuf/proto",
     "github.com/hashicorp/go-multierror",
