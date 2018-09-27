@@ -8,25 +8,31 @@ import (
 	"time"
 
 	"github.com/prizem-io/h2/proxy"
-	log "github.com/sirupsen/logrus"
 
-	"github.com/prizem-io/proxy/director"
+	"github.com/prizem-io/proxy/pkg/director"
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type (
-	Timer struct{}
+	Timer struct {
+		logger log.Logger
+	}
 
 	State struct {
 		begin time.Time
 	}
 )
 
-func Load(input interface{}) (proxy.Middleware, error) {
-	return New(), nil
+func Load(logger log.Logger) proxy.MiddlewareLoader {
+	return func(input interface{}) (proxy.Middleware, error) {
+		return New(logger), nil
+	}
 }
 
-func New() *Timer {
-	return &Timer{}
+func New(logger log.Logger) *Timer {
+	return &Timer{
+		logger: logger,
+	}
 }
 
 func (f *Timer) Name() string {
@@ -55,7 +61,7 @@ func (f *Timer) ReceiveHeaders(ctx *proxy.RHContext, params *proxy.HeadersParams
 	if endStream {
 		state := ctx.State().(*State)
 		proxyInfo := ctx.Info.(*director.ProxyInfo)
-		log.Infof(
+		f.logger.Infof(
 			"%s/%s took %v",
 			proxyInfo.Service.Name,
 			proxyInfo.Operation.Name,
@@ -69,7 +75,7 @@ func (f *Timer) ReceiveData(ctx *proxy.RDContext, data []byte, endStream bool) e
 	if endStream {
 		state := ctx.State().(*State)
 		proxyInfo := ctx.Info.(*director.ProxyInfo)
-		log.Infof(
+		f.logger.Infof(
 			"%s/%s took %v",
 			proxyInfo.Service.Name,
 			proxyInfo.Operation.Name,

@@ -22,25 +22,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+type (
+	Routes struct {
+		url      string
+		policies map[string]proxy.MiddlewareLoader
+
+		router  unsafe.Pointer
+		catalog unsafe.Pointer
+
+		mu      sync.RWMutex
+		version int64
+	}
+
+	PathInfo struct {
+		Service   *api.Service
+		Operation *api.Operation
+	}
+)
+
 var (
 	ErrMiddlewareNotFound = errors.New("middleware not found")
 )
-
-type Routes struct {
-	url      string
-	policies map[string]proxy.MiddlewareLoader
-
-	router  unsafe.Pointer
-	catalog unsafe.Pointer
-
-	mu      sync.RWMutex
-	version int64
-}
-
-type PathInfo struct {
-	Service   *api.Service
-	Operation *api.Operation
-}
 
 func NewRoutes(baseURL string, policies map[string]proxy.MiddlewareLoader) *Routes {
 	return &Routes{
@@ -119,7 +121,7 @@ func (r *Routes) StoreRoutes(version int64, services []api.Service) bool {
 
 	r.mu.Lock()
 	if version != r.version {
-		log.Println("Storing routes")
+		log.Infof("Storing routes for updated index %d", version)
 		atomic.StorePointer(&r.router, unsafe.Pointer(routes))
 		atomic.StorePointer(&r.catalog, unsafe.Pointer(&serviceMap))
 		r.version = version

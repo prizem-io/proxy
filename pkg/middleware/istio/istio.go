@@ -14,9 +14,8 @@ import (
 	"github.com/istio/api/mixer/v1"
 	"github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
-	"github.com/satori/go.uuid"
 
-	"github.com/prizem-io/proxy/director"
+	"github.com/prizem-io/proxy/pkg/director"
 )
 
 type TrafficDirection int
@@ -68,11 +67,6 @@ func (f *Istio) InitialState() interface{} {
 	return &State{
 		bag: GetMutableBag(nil), //NewAttributes()
 	}
-}
-
-func uuidString() string {
-	id, _ := uuid.NewV4()
-	return id.String()
 }
 
 func (f *Istio) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, endStream bool) error {

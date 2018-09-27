@@ -9,12 +9,13 @@ import (
 	nats "github.com/nats-io/go-nats"
 	"github.com/prizem-io/api/v1/convert"
 	pb "github.com/prizem-io/api/v1/proto"
-	log "github.com/sirupsen/logrus"
 
-	"github.com/prizem-io/proxy/discovery"
+	"github.com/prizem-io/proxy/pkg/discovery"
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type Connection struct {
+	logger    log.Logger
 	nodeID    string
 	target    string
 	routes    *discovery.Routes
@@ -25,8 +26,9 @@ type Connection struct {
 	esub *nats.Subscription
 }
 
-func New(nodeID string, target string, routes *discovery.Routes, endpoints *discovery.Endpoints) *Connection {
+func New(logger log.Logger, nodeID string, target string, routes *discovery.Routes, endpoints *discovery.Endpoints) *Connection {
 	return &Connection{
+		logger:    logger,
 		nodeID:    nodeID,
 		target:    target,
 		routes:    routes,
@@ -56,7 +58,7 @@ func (c *Connection) SubscribeToRoutes() error {
 		var msg pb.Message
 		err := proto.Unmarshal(m.Data, &msg)
 		if err != nil {
-			log.Errorf("Error unmarshalling protobuf: %v", err)
+			c.logger.Errorf("Error unmarshalling protobuf: %v", err)
 			return
 		}
 
@@ -65,11 +67,11 @@ func (c *Connection) SubscribeToRoutes() error {
 				var catalog pb.RoutesCatalog
 				err := proto.Unmarshal(msg.Data, &catalog)
 				if err != nil {
-					log.Errorf("Error unmarshalling protobuf: %v", err)
+					c.logger.Errorf("Error unmarshalling protobuf: %v", err)
 					// TODO
 				} else {
 					if c.routes.StoreRoutes(catalog.Version, convert.DecodeServices(catalog.Services)) {
-						log.Println("Stored from protobuf")
+						c.logger.Info("Stored from protobuf")
 						return
 					}
 				}
@@ -77,9 +79,9 @@ func (c *Connection) SubscribeToRoutes() error {
 
 			err := c.routes.RequestCatalog()
 			if err != nil {
-				log.Error(err)
+				c.logger.Error(err)
 			}
-			log.Println("Stored from rest")
+			c.logger.Info("Stored from rest")
 		}
 	})
 	if err != nil {
@@ -110,7 +112,7 @@ func (c *Connection) SubscribeToEndpoints() error {
 		var msg pb.Message
 		err := proto.Unmarshal(m.Data, &msg)
 		if err != nil {
-			log.Errorf("Error unmarshalling protobuf: %v", err)
+			c.logger.Errorf("Error unmarshalling protobuf: %v", err)
 			return
 		}
 
@@ -119,11 +121,11 @@ func (c *Connection) SubscribeToEndpoints() error {
 				var catalog pb.EndpointsCatalog
 				err := proto.Unmarshal(msg.Data, &catalog)
 				if err != nil {
-					log.Errorf("Error unmarshalling protobuf: %v", err)
+					c.logger.Errorf("Error unmarshalling protobuf: %v", err)
 					// TODO
 				} else {
 					if c.endpoints.StoreEndpoints(catalog.Version, convert.DecodeNodes(catalog.Nodes)) {
-						log.Println("Stored from protobuf")
+						c.logger.Info("Stored from protobuf")
 						return
 					}
 				}
@@ -131,9 +133,9 @@ func (c *Connection) SubscribeToEndpoints() error {
 
 			err := c.endpoints.RequestCatalog()
 			if err != nil {
-				log.Error(err)
+				c.logger.Error(err)
 			}
-			log.Println("Stored from rest")
+			c.logger.Info("Stored from rest")
 		}
 	})
 	if err != nil {

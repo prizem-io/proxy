@@ -12,13 +12,14 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prizem-io/api/v1/convert"
 	"github.com/prizem-io/api/v1/proto"
-	log "github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 
-	"github.com/prizem-io/proxy/discovery"
+	"github.com/prizem-io/proxy/pkg/discovery"
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type Connection struct {
+	logger    log.Logger
 	nodeID    string
 	target    string
 	routes    *discovery.Routes
@@ -29,8 +30,9 @@ type Connection struct {
 	estream proto.EndpointDiscovery_StreamEndpointsClient
 }
 
-func New(nodeID string, target string, routes *discovery.Routes, endpoints *discovery.Endpoints) *Connection {
+func New(logger log.Logger, nodeID string, target string, routes *discovery.Routes, endpoints *discovery.Endpoints) *Connection {
 	return &Connection{
+		logger:    logger,
 		nodeID:    nodeID,
 		target:    target,
 		routes:    routes,
@@ -49,13 +51,13 @@ func (c *Connection) Connect() error {
 }
 
 func (c *Connection) resubscribeToRoutes() {
-	log.Error("Lost connection with routes.  Attempting to reconnect...")
+	c.logger.Error("Lost connection with routes.  Attempting to reconnect...")
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
 			err := c.SubscribeToRoutes()
 			if err == nil {
-				log.Info("Reconnected to routes")
+				c.logger.Info("Reconnected to routes")
 				break
 			}
 		}
@@ -63,13 +65,13 @@ func (c *Connection) resubscribeToRoutes() {
 }
 
 func (c *Connection) resubscribeToEndpoints() {
-	log.Error("Lost connection with endpoints.  Attempting to reconnect...")
+	c.logger.Error("Lost connection with endpoints.  Attempting to reconnect...")
 	go func() {
 		for {
 			time.Sleep(5 * time.Second)
 			err := c.SubscribeToEndpoints()
 			if err == nil {
-				log.Info("Reconnected to endpoints")
+				c.logger.Info("Reconnected to endpoints")
 				break
 			}
 		}
@@ -101,11 +103,11 @@ func (c *Connection) SubscribeToRoutes() error {
 		for {
 			catalog, err := rstream.Recv()
 			if err == io.EOF {
-				log.Error("EOF")
+				c.logger.Error("EOF")
 				return
 			}
 			if err != nil {
-				log.Errorf("Recv error: %v", err)
+				c.logger.Errorf("Recv error: %v", err)
 				c.resubscribeToRoutes()
 				return
 			}
@@ -152,11 +154,11 @@ func (c *Connection) SubscribeToEndpoints() error {
 		for {
 			catalog, err := estream.Recv()
 			if err == io.EOF {
-				log.Error("EOF")
+				c.logger.Error("EOF")
 				return
 			}
 			if err != nil {
-				log.Errorf("Recv error: %v", err)
+				c.logger.Errorf("Recv error: %v", err)
 				c.resubscribeToEndpoints()
 				return
 			}

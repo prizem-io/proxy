@@ -11,7 +11,6 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
-	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -20,23 +19,28 @@ import (
 	"github.com/oklog/run"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/prizem-io/h2/proxy"
-	control "github.com/prizem-io/proxy/control/grpc"
-	"github.com/prizem-io/proxy/director"
-	"github.com/prizem-io/proxy/discovery"
-	"github.com/prizem-io/proxy/middleware/istio"
-	opentracingmw "github.com/prizem-io/proxy/middleware/opentracing"
-	"github.com/prizem-io/proxy/middleware/timer"
-	tlsreloader "github.com/prizem-io/proxy/tls"
-	tracing "github.com/prizem-io/proxy/tracing/opentracing"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	jaegerconfig "github.com/uber/jaeger-client-go/config"
+	"go.uber.org/zap"
 	"google.golang.org/grpc"
+
+	control "github.com/prizem-io/proxy/pkg/control/grpc"
+	"github.com/prizem-io/proxy/pkg/director"
+	"github.com/prizem-io/proxy/pkg/discovery"
+	"github.com/prizem-io/proxy/pkg/log"
+	"github.com/prizem-io/proxy/pkg/middleware/istio"
+	opentracingmw "github.com/prizem-io/proxy/pkg/middleware/opentracing"
+	"github.com/prizem-io/proxy/pkg/middleware/timer"
+	tlsreloader "github.com/prizem-io/proxy/pkg/tls"
+	tracing "github.com/prizem-io/proxy/pkg/tracing/opentracing"
 )
 
 func main() {
-	log.SetLevel(log.DebugLevel)
-	//log.SetLevel(log.WarnLevel)
+	zapLogger, _ := zap.NewProduction()
+	defer zapLogger.Sync() // flushes buffer, if any
+	sugar := zapLogger.Sugar()
+	logger := log.New(sugar)
+
 	nodeID, _ := uuid.FromString("24bbe1f7-3ac0-4489-9450-e62f262f818b")
 
 	ingressListenPort := readEnv("INGRESS_PORT", 50052)
@@ -54,9 +58,9 @@ func main() {
 
 	// Load TLS key pair
 
-	keyPairReloader, err := tlsreloader.NewKeyPairReloader("etc/backend.cert", "etc/backend.key")
+	keyPairReloader, err := tlsreloader.NewKeyPairReloader(logger, "etc/backend.cert", "etc/backend.key")
 	if err != nil {
-		log.Fatalf("Could not load key pair: %v", err)
+		logger.Fatalf("Could not load key pair: %v", err)
 	}
 
 	tlsConfig := tls.Config{
@@ -73,21 +77,21 @@ func main() {
 	r := discovery.NewRoutes(controlPlaneRESTURI, policies)
 	e := discovery.NewEndpoints(controlPlaneRESTURI)
 	l := discovery.NewLocal()
-	controller := control.New(nodeID.String(), controlPlaneGRPCURI, r, e)
+	controller := control.New(logger, nodeID.String(), controlPlaneGRPCURI, r, e)
 	err = controller.Connect()
 	if err != nil {
-		log.Fatalf("Could not connect to control plane: %v", err)
+		logger.Fatalf("Could not connect to control plane: %v", err)
 	}
 
 	err = controller.SubscribeToRoutes()
 	if err != nil {
-		log.Fatalf("Could not subscribe to routes: %v", err)
+		logger.Fatalf("Could not subscribe to routes: %v", err)
 	}
 	defer controller.UnsubscribeFromRoutes()
 
 	err = controller.SubscribeToEndpoints()
 	if err != nil {
-		log.Fatalf("Could not subscribe to endpoints: %v", err)
+		logger.Fatalf("Could not subscribe to endpoints: %v", err)
 	}
 	defer controller.UnsubscribeFromEndpoints()
 
@@ -111,7 +115,7 @@ func main() {
 
 	conn, err := grpc.Dial("localhost:9091", grpc.WithInsecure())
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		logger.Fatalf("did not connect: %v", err)
 	}
 	client := v1.NewMixerClient(conn)
 
@@ -123,10 +127,14 @@ func main() {
 	{
 		var listener net.Listener
 		g.Add(func() error {
-			upstreamManager := director.NewUpstreamManager(20)
-			d := director.New(r.GetPathInfo, e.GetSourceInstance, l.GetServiceNodes, upstreamManager, proxy.DefaultUpstreamDialers, nil, director.RoundRobin, timer.New(), istio.New(nodeID.String(), client, istio.Inbound), opentracingmw.New(t, opentracingmw.Server))
+			upstreams := director.NewUpstreams(20)
+			d := director.New(logger, r.GetPathInfo, e.GetSourceInstance, l.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, nil, director.RoundRobin,
+				timer.New(logger),
+				istio.New(nodeID.String(), client, istio.Inbound),
+				opentracingmw.New(logger, t, opentracingmw.Server),
+			)
 
-			log.Printf("Proxy ingress starting on :%d", ingressListenPort)
+			logger.Infof("Proxy ingress starting on :%d", ingressListenPort)
 			ln, err := net.Listen("tcp", fmt.Sprintf(":%d", ingressListenPort))
 			if err != nil {
 				return err
@@ -146,10 +154,13 @@ func main() {
 		var listener net.Listener
 		g.Add(func() error {
 			var err error
-			upstreamManager := director.NewUpstreamManager(20)
-			d := director.New(r.GetPathInfo, l.GetSourceInstance, e.GetServiceNodes, upstreamManager, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad, istio.New(nodeID.String(), client, istio.Outbound), opentracingmw.New(t, opentracingmw.Client))
+			upstreams := director.NewUpstreams(20)
+			d := director.New(logger, r.GetPathInfo, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
+				istio.New(nodeID.String(), client, istio.Outbound),
+				opentracingmw.New(logger, t, opentracingmw.Client),
+			)
 
-			log.Printf("Proxy egress starting on :%d", egressListenPort)
+			logger.Infof("Proxy egress starting on :%d", egressListenPort)
 			listener, err = net.Listen("tcp", fmt.Sprintf(":%d", egressListenPort))
 			if err != nil {
 				return err
@@ -187,11 +198,9 @@ func main() {
 	}
 	// Registration & Profiling endpoint
 	{
-		runtime.SetMutexProfileFraction(5)
-
 		http.HandleFunc("/register", l.HandleRegister(nodeID, controlPlaneRESTURI, ingressListenPort))
 
-		log.Printf("Register starting on :%d", registerListenPort)
+		logger.Infof("Register starting on :%d", registerListenPort)
 		listener, _ := net.Listen("tcp", fmt.Sprintf("localhost:%d", registerListenPort))
 		g.Add(func() error {
 			return http.Serve(listener, nil)
@@ -218,7 +227,7 @@ func main() {
 
 	//////
 
-	log.Infof("exit %v", g.Run())
+	logger.Infof("exit %v", g.Run())
 }
 
 func readEnv(key string, defaultValue int) int {

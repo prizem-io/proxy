@@ -9,11 +9,11 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
-	tracing "github.com/prizem-io/proxy/tracing/opentracing"
-	log "github.com/sirupsen/logrus"
-
 	"github.com/prizem-io/h2/proxy"
-	"github.com/prizem-io/proxy/director"
+
+	"github.com/prizem-io/proxy/pkg/director"
+	"github.com/prizem-io/proxy/pkg/log"
+	tracing "github.com/prizem-io/proxy/pkg/tracing/opentracing"
 )
 
 type TraceType int
@@ -25,6 +25,7 @@ const (
 
 type (
 	Tracer struct {
+		logger    log.Logger
 		tracer    *tracing.ProcessTracers
 		traceType TraceType
 	}
@@ -34,14 +35,15 @@ type (
 	}
 )
 
-func Load(tracer *tracing.ProcessTracers, traceType TraceType) proxy.MiddlewareLoader {
+func Load(logger log.Logger, tracer *tracing.ProcessTracers, traceType TraceType) proxy.MiddlewareLoader {
 	return func(input interface{}) (proxy.Middleware, error) {
-		return New(tracer, traceType), nil
+		return New(logger, tracer, traceType), nil
 	}
 }
 
-func New(tracer *tracing.ProcessTracers, traceType TraceType) *Tracer {
+func New(logger log.Logger, tracer *tracing.ProcessTracers, traceType TraceType) *Tracer {
 	return &Tracer{
+		logger:    logger,
 		tracer:    tracer,
 		traceType: traceType,
 	}
@@ -64,7 +66,7 @@ func (f *Tracer) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, 
 
 	tracer, err := f.tracer.Tracer(proxyInfo.Service.Name)
 	if err != nil {
-		log.Warnf("could not get tracer for %q: %v", proxyInfo.Operation.Name, err)
+		f.logger.Warnf("could not get tracer for %q: %v", proxyInfo.Operation.Name, err)
 		return ctx.Next(params, endStream)
 	}
 
@@ -75,7 +77,7 @@ func (f *Tracer) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, 
 			HTTPHeadersCarrier{params},
 		)
 		if err != nil && err != opentracing.ErrSpanContextNotFound {
-			log.Error("err", err)
+			f.logger.Error("err", err)
 		}
 
 		span = tracer.StartSpan(proxyInfo.Operation.Name, opentracing.ChildOf(spanContext))
@@ -88,7 +90,7 @@ func (f *Tracer) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, 
 			opentracing.HTTPHeaders,
 			HTTPHeadersCarrier{params})
 		if err != nil {
-			log.Error("err", err)
+			f.logger.Error("err", err)
 		}
 	case Server:
 		spanContext, err := tracer.Extract(
@@ -96,7 +98,7 @@ func (f *Tracer) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, 
 			HTTPHeadersCarrier{params},
 		)
 		if err != nil && err != opentracing.ErrSpanContextNotFound {
-			log.Error("err", err)
+			f.logger.Error("err", err)
 		}
 
 		span = tracer.StartSpan(proxyInfo.Operation.Name, ext.RPCServerOption(spanContext))
@@ -108,7 +110,7 @@ func (f *Tracer) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, 
 			opentracing.HTTPHeaders,
 			HTTPHeadersCarrier{params})
 		if err != nil {
-			log.Error("err", err)
+			f.logger.Error("err", err)
 		}
 	}
 

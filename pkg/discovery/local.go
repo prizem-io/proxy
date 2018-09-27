@@ -18,15 +18,15 @@ import (
 )
 
 type Local struct {
-	servicesMu sync.RWMutex
-	services   map[string]*ServiceNodes
-	remotes    map[string]*ServiceNodes
+	servicesMu     sync.RWMutex
+	servicesByName map[string]*ServiceNodes
+	servicesByHost map[string]*ServiceNodes
 }
 
 func NewLocal() *Local {
 	return &Local{
-		services: make(map[string]*ServiceNodes, 20),
-		remotes:  make(map[string]*ServiceNodes, 20),
+		servicesByName: make(map[string]*ServiceNodes, 20),
+		servicesByHost: make(map[string]*ServiceNodes, 20),
 	}
 }
 
@@ -34,13 +34,13 @@ func (l *Local) Register(serviceInstance *api.ServiceInstance, node *api.Node) {
 	l.servicesMu.Lock()
 	defer l.servicesMu.Unlock()
 
-	serviceNodes, ok := l.services[serviceInstance.Service]
+	serviceNodes, ok := l.servicesByName[serviceInstance.Service]
 	if !ok {
 		serviceNodes = &ServiceNodes{
 			Service: serviceInstance,
 			Nodes:   []*api.Node{node},
 		}
-		l.services[serviceInstance.Service] = serviceNodes
+		l.servicesByName[serviceInstance.Service] = serviceNodes
 	} else {
 		found := false
 		for i := range serviceNodes.Nodes {
@@ -60,7 +60,7 @@ func (l *Local) Register(serviceInstance *api.ServiceInstance, node *api.Node) {
 		host = "127.0.0.1"
 	}
 
-	l.remotes[host] = &ServiceNodes{
+	l.servicesByHost[host] = &ServiceNodes{
 		Service: serviceInstance,
 		Nodes:   []*api.Node{node},
 	}
@@ -70,7 +70,7 @@ func (l *Local) GetServiceNodes(service string) (*ServiceNodes, error) {
 	l.servicesMu.RLock()
 	defer l.servicesMu.RUnlock()
 
-	serviceNodes, ok := l.services[service]
+	serviceNodes, ok := l.servicesByName[service]
 	if !ok {
 		return nil, proxy.ErrServiceUnavailable
 	}
@@ -88,7 +88,7 @@ func (l *Local) GetSourceInstance(remoteAddr net.Addr, headers proxy.Headers) (*
 	}
 
 	l.servicesMu.RLock()
-	source, ok := l.remotes[host]
+	source, ok := l.servicesByHost[host]
 	l.servicesMu.RUnlock()
 
 	if ok {

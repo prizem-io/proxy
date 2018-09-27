@@ -12,10 +12,11 @@ import (
 	"syscall"
 	"unsafe"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/prizem-io/proxy/pkg/log"
 )
 
 type KeyPairReloader struct {
+	logger   log.Logger
 	cert     unsafe.Pointer // Stores a *tls.Certificate
 	certPath string
 	keyPath  string
@@ -23,8 +24,9 @@ type KeyPairReloader struct {
 	reload chan os.Signal
 }
 
-func NewKeyPairReloader(certPath, keyPath string) (*KeyPairReloader, error) {
+func NewKeyPairReloader(logger log.Logger, certPath, keyPath string) (*KeyPairReloader, error) {
 	reloader := KeyPairReloader{
+		logger:   logger,
 		certPath: certPath,
 		keyPath:  keyPath,
 		reload:   make(chan os.Signal, 1),
@@ -48,10 +50,10 @@ func (k *KeyPairReloader) Reload() {
 }
 
 func (k *KeyPairReloader) maybeReload() error {
-	log.Printf("Attempting to reload TLS certificate and key from %q and %q", k.certPath, k.keyPath)
+	k.logger.Infof("Attempting to reload TLS certificate and key from %q and %q", k.certPath, k.keyPath)
 	newCert, err := tls.LoadX509KeyPair(k.certPath, k.keyPath)
 	if err != nil {
-		log.Printf("Keeping old TLS certificate because the new one could not be loaded: %v", err)
+		k.logger.Infof("Keeping old TLS certificate because the new one could not be loaded: %v", err)
 		return err
 	}
 	atomic.StorePointer(&k.cert, unsafe.Pointer(&newCert))

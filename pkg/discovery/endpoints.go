@@ -24,21 +24,23 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type ServiceNodes struct {
-	Service   *api.ServiceInstance
-	Nodes     []*api.Node
-	NodeIndex uint32
-}
+type (
+	ServiceNodes struct {
+		Service   *api.ServiceInstance
+		Nodes     []*api.Node
+		NodeIndex uint32
+	}
 
-type Endpoints struct {
-	url          string
-	serivceNodes unsafe.Pointer
-	sourceNodes  unsafe.Pointer
-	nodeServices unsafe.Pointer
+	Endpoints struct {
+		url          string
+		serivceNodes unsafe.Pointer
+		sourceNodes  unsafe.Pointer
+		nodeServices unsafe.Pointer
 
-	mu      sync.RWMutex
-	version int64
-}
+		mu      sync.RWMutex
+		version int64
+	}
+)
 
 func NewEndpoints(baseURL string) *Endpoints {
 	return &Endpoints{
@@ -124,7 +126,7 @@ func (e *Endpoints) StoreEndpoints(version int64, nodes []api.Node) bool {
 
 	e.mu.Lock()
 	if version != e.version {
-		log.Println("Storing endpoints")
+		log.Infof("Storing endpoints for updated index %d", version)
 		atomic.StorePointer(&e.serivceNodes, unsafe.Pointer(&serviceNodes))
 		atomic.StorePointer(&e.sourceNodes, unsafe.Pointer(&sourceNodes))
 		atomic.StorePointer(&e.nodeServices, unsafe.Pointer(&nodeServices))
@@ -185,8 +187,8 @@ func (e *Endpoints) GetSourceInstance(remoteAddr net.Addr, headers proxy.Headers
 	}
 
 	ptr := atomic.LoadPointer(&e.sourceNodes)
-	sources := (*map[uuid.UUID]*ServiceNodes)(ptr)
-	serviceNodes, ok := (*sources)[sourceID]
+	sources := *(*map[uuid.UUID]*ServiceNodes)(ptr)
+	serviceNodes, ok := sources[sourceID]
 	if !ok {
 		return nil, nil
 	}
