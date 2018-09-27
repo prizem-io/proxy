@@ -82,8 +82,8 @@ func main() {
 	e := discovery.NewEndpoints(logger, controlPlaneRESTURI)
 	l := discovery.NewLocal()
 
-	logger.Infof("Connecting to control plance...")
-	controller := control.New(logger, nodeID.String(), controlPlaneGRPCURI, r, e)
+	logger.Infof("Connecting to control plane...")
+	controller := control.New(logger, uuid.NewV4().String(), controlPlaneGRPCURI, r, e)
 	err = backoff.Retry(controller.Connect, eb)
 	if err != nil {
 		logger.Fatalf("Could not connect to control plane: %v", err)
@@ -121,7 +121,7 @@ func main() {
 
 	//////
 
-	logger.Infof("Connecting to Istio...")
+	logger.Infof("Connecting to Istio Mixer...")
 	var conn *grpc.ClientConn
 	eb.Reset()
 	err = backoff.Retry(func() (err error) {
