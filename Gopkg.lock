@@ -106,14 +106,6 @@
   version = "v1.1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:f44d34fda864bed6d6c71514cd40b2ee097e6e67f745d5d014113e1faa5af8b7"
-  name = "github.com/konsorten/go-windows-terminal-sequences"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "b729f2633dfe35f4d1d8a32385f6685610ce1cb5"
-
-[[projects]]
   digest = "1:645110e089152bd0f4a011a2648fbb0e4df5977be73ca605781157ac297f50c4"
   name = "github.com/mitchellh/mapstructure"
   packages = ["."]
@@ -191,14 +183,15 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:ae9cb793ded2f1fb64d5436ba2b357f4d89d8b71c898f3f1a883bc1c78c542be"
+  digest = "1:e6fe1b6b158373933132a62ff1d6a3b82aa2679ac6dd51477c9faec36e928314"
   name = "github.com/prizem-io/h2"
   packages = [
     "frames",
+    "log",
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "10199b5cbdc2e6504eec83dbb3a80030827df649"
+  revision = "c7a58d1e5e1cc175bd66265ba01775dcd230cd66"
 
 [[projects]]
   branch = "master"
@@ -215,14 +208,6 @@
   pruneopts = "UT"
   revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
   version = "v1.2.0"
-
-[[projects]]
-  digest = "1:dc2d85c13ac22c22a1f3170a41a8e1b897fa05134aaf533f16df44f66a25b4a1"
-  name = "github.com/sirupsen/logrus"
-  packages = ["."]
-  pruneopts = "UT"
-  revision = "a67f783a3814b8729bd2dac5780b5f78f8dbd64d"
-  version = "v1.1.0"
 
 [[projects]]
   digest = "1:645cabccbb4fa8aab25a956cbcbdf6a6845ca736b2c64e197ca7cbb9d210b939"
@@ -327,14 +312,6 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:3f3a05ae0b95893d90b9b3b5afdb79a9b3d96e4e36e099d841ae602e4aca0da8"
-  name = "golang.org/x/crypto"
-  packages = ["ssh/terminal"]
-  pruneopts = "UT"
-  revision = "0e37d006457bf46f9e6692014ba72ef82c33022c"
-
-[[projects]]
-  branch = "master"
   digest = "1:505dbee0833715a72a529bb57c354826ad42a4496fad787fa143699b4de1a6d0"
   name = "golang.org/x/net"
   packages = [
@@ -351,12 +328,9 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:2c607ffa8a0a34a9acba4aba7b33d981b5a2150bfcec41b1f2ef1d791bcf6c14"
+  digest = "1:ff116c3de0188ee4c62107711d44cc5ec52b16d8a55274d480f5be34270acb4d"
   name = "golang.org/x/sys"
-  packages = [
-    "unix",
-    "windows",
-  ]
+  packages = ["unix"]
   pruneopts = "UT"
   revision = "dad3d9fb7b6e83d0f9ac8f54670f6334c3a287b4"
 

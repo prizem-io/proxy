@@ -40,6 +40,7 @@ func main() {
 	defer zapLogger.Sync() // flushes buffer, if any
 	sugar := zapLogger.Sugar()
 	logger := log.New(sugar)
+	proxy.SetLogger(sugar)
 
 	nodeID, _ := uuid.FromString("24bbe1f7-3ac0-4489-9450-e62f262f818b")
 
