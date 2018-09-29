@@ -53,7 +53,8 @@
   name = "github.com/prizem-io/api"
 
 [[constraint]]
-  branch = "master"
+  #branch = "master"
+  branch = "feature/refactoring"
   name = "github.com/prizem-io/h2"
 
 [[constraint]]

@@ -179,7 +179,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:7a71bbfec035deb8b688e4dee981c3269d1c6d7f345051737c97efd7ae892c3b"
+  digest = "1:ded7532ba1b9d844b7ced05608007d223f044b893cf4a9a3dbce32f08cc2e8cb"
   name = "github.com/prizem-io/api"
   packages = [
     "v1",
@@ -187,11 +187,11 @@
     "v1/proto",
   ]
   pruneopts = "UT"
-  revision = "4c8ce6368c12c6ab0c7b33121d59d1c02a4f8429"
+  revision = "64839d4510c692400bd04f24ef7c026c6aa639f1"
 
 [[projects]]
-  branch = "master"
-  digest = "1:be36c1770605ed813b8caa81c85b0ccf5559032c6b9e1a96bcc2f5d448ac2846"
+  branch = "feature/refactoring"
+  digest = "1:67a8e7dfb96283ab106af65779c0090cd47439346bebaf52809c680a85a13f77"
   name = "github.com/prizem-io/h2"
   packages = [
     "frames",
@@ -199,7 +199,7 @@
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "50f6681fa2698c1c82f55071ea7832cfe16539aa"
+  revision = "22e23b45c05d42d9b5db71d4d334e6f157aab249"
 
 [[projects]]
   branch = "master"

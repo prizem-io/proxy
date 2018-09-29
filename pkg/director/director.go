@@ -161,8 +161,12 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 	var _middleware [25]proxy.Middleware
 	middleware := _middleware[:0]
 	middleware = append(middleware, d.middleware...)
-	middleware = append(middleware, pathInfo.Service.Middleware...)
-	middleware = append(middleware, pathInfo.Operation.Middleware...)
+	if serivceMiddleware, ok := pathInfo.Service.Middleware.([]proxy.Middleware); ok {
+		middleware = append(middleware, serivceMiddleware...)
+	}
+	if operationMiddleware, ok := pathInfo.Operation.Middleware.([]proxy.Middleware); ok {
+		middleware = append(middleware, operationMiddleware...)
+	}
 
 	if !ok {
 		d.logger.Infof("Connecting to upstream %s", upstreamKey)
