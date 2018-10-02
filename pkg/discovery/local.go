@@ -183,3 +183,16 @@ func (l *Local) HandleRegister(nodeID uuid.UUID, controlPlaneRESTURI string, ing
 		fmt.Fprintf(w, "OK")
 	}
 }
+
+func (l *Local) HandleInfo(w http.ResponseWriter, r *http.Request) {
+	l.servicesMu.RLock()
+	payload, err := json.Marshal(l.servicesByHost)
+	l.servicesMu.RUnlock()
+	if err != nil {
+		fmt.Fprintf(w, "ERROR")
+		return // TODO
+	}
+
+	w.Header().Add("Content-Type", "application/json")
+	w.Write(payload)
+}
