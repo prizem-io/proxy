@@ -24,6 +24,7 @@ type Reporter struct {
 	queue      [][]*MutableBag
 
 	stop chan struct{}
+	done chan struct{}
 }
 
 func NewReporter(client mixer.MixerClient, size int, duration time.Duration) *Reporter {
@@ -36,10 +37,13 @@ func NewReporter(client mixer.MixerClient, size int, duration time.Duration) *Re
 		converted:  make([]mixer.CompressedAttributes, size),
 		queue:      make([][]*MutableBag, 0, 10),
 		stop:       make(chan struct{}, 1),
+		done:       make(chan struct{}, 1),
 	}
 }
 
 func (r *Reporter) Process() error {
+	defer func() { r.done <- struct{}{} }()
+
 	for {
 		var err error
 		select {
@@ -52,6 +56,7 @@ func (r *Reporter) Process() error {
 				err = r.Flush()
 			}
 		case <-r.stop:
+			err = r.Flush()
 			return nil
 		}
 
@@ -97,4 +102,5 @@ func (r *Reporter) Flush() error {
 
 func (r *Reporter) Stop() {
 	close(r.stop)
+	<-r.done
 }
