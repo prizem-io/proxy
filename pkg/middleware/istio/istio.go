@@ -5,13 +5,11 @@
 package istio
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"strconv"
 	"time"
 
-	"github.com/istio/api/mixer/v1"
 	"github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
 
@@ -27,9 +25,9 @@ const (
 
 type (
 	Istio struct {
-		nodeID    string
-		client    v1.MixerClient
-		direction TrafficDirection
+		nodeID     string
+		attributes chan *MutableBag
+		direction  TrafficDirection
 	}
 
 	State struct {
@@ -45,17 +43,17 @@ type (
 	}
 )
 
-func Load(nodeID string, client v1.MixerClient, direction TrafficDirection) proxy.MiddlewareLoader {
+func Load(nodeID string, attributes chan *MutableBag, direction TrafficDirection) proxy.MiddlewareLoader {
 	return func(input interface{}) (proxy.Middleware, error) {
-		return New(nodeID, client, direction), nil
+		return New(nodeID, attributes, direction), nil
 	}
 }
 
-func New(nodeID string, client v1.MixerClient, direction TrafficDirection) *Istio {
+func New(nodeID string, attributes chan *MutableBag, direction TrafficDirection) *Istio {
 	return &Istio{
-		nodeID:    nodeID,
-		client:    client,
-		direction: direction,
+		nodeID:     nodeID,
+		attributes: attributes,
+		direction:  direction,
 	}
 }
 
@@ -65,7 +63,7 @@ func (f *Istio) Name() string {
 
 func (f *Istio) InitialState() interface{} {
 	return &State{
-		bag: GetMutableBag(nil), //NewAttributes()
+		bag: GetMutableBag(nil),
 	}
 }
 
@@ -259,12 +257,7 @@ func (f *Istio) ReceiveData(ctx *proxy.RDContext, data []byte, endStream bool) e
 	state := ctx.State().(*State)
 	state.responseBodySize += int64(len(data))
 	if endStream {
-		now := time.Now()
-		attrs := state.bag
-		attrs.Set("response.time", now)
-		attrs.Set("response.size", state.responseBodySize)
-		attrs.Set("response.duration", now.Sub(state.requestTime))
-		f.sendReport(attrs)
+		f.endResponse(state)
 	}
 	return ctx.Next(data, endStream)
 }
@@ -277,20 +270,7 @@ func (f *Istio) endResponse(state *State) {
 	attrs.Set("response.size", state.responseBodySize)
 	attrs.Set("response.duration", now.Sub(state.requestTime))
 	attrs.Set("response.total_size", state.responseHeaderSize+state.responseBodySize)
-	f.sendReport(attrs)
-}
-
-func (f *Istio) sendReport(bag *MutableBag) {
-	var attrs v1.CompressedAttributes
-	bag.ToProto(&attrs, nil, 0)
-	_, err := f.client.Report(context.Background(), &v1.ReportRequest{
-		Attributes: []v1.CompressedAttributes{
-			attrs,
-		},
-	})
-	if err != nil {
-		fmt.Println(err)
-	}
+	f.attributes <- attrs
 }
 
 func setString(attrs *MutableBag, key, value string) {
