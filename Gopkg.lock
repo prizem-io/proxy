@@ -191,7 +191,7 @@
 
 [[projects]]
   branch = "feature/refactoring"
-  digest = "1:401305c281a937c9c127133175ad8fdcab8c55c6426fb5914e2c803a728810d4"
+  digest = "1:9628e5a4f60520148c62846aea6b8dc73a04f033acd31ca30254655d4c1effd4"
   name = "github.com/prizem-io/h2"
   packages = [
     "frames",
@@ -199,7 +199,7 @@
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "7330085a1b7fce284a7f601e6f1468c505883059"
+  revision = "44547ed254f64e4685316e40f0bdff18dd7799f8"
 
 [[projects]]
   branch = "master"
