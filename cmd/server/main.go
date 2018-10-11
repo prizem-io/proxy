@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -24,23 +26,29 @@ import (
 	jaegerconfig "github.com/uber/jaeger-client-go/config"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/grpclog"
 
 	control "github.com/prizem-io/proxy/pkg/control/grpc"
 	"github.com/prizem-io/proxy/pkg/director"
 	"github.com/prizem-io/proxy/pkg/discovery"
-	"github.com/prizem-io/proxy/pkg/log"
+	internallog "github.com/prizem-io/proxy/pkg/log"
 	"github.com/prizem-io/proxy/pkg/middleware/istio"
 	opentracingmw "github.com/prizem-io/proxy/pkg/middleware/opentracing"
+	"github.com/prizem-io/proxy/pkg/middleware/retry"
 	"github.com/prizem-io/proxy/pkg/middleware/timer"
 	tlsreloader "github.com/prizem-io/proxy/pkg/tls"
 	tracing "github.com/prizem-io/proxy/pkg/tracing/opentracing"
 )
 
+func init() {
+	grpclog.SetLogger(log.New(ioutil.Discard, "", 0))
+}
+
 func main() {
-	zapLogger, _ := zap.NewProduction()
+	zapLogger, _ := zap.NewDevelopment()
 	defer zapLogger.Sync() // flushes buffer, if any
 	sugar := zapLogger.Sugar()
-	logger := log.New(sugar)
+	logger := internallog.New(sugar)
 	proxy.SetLogger(sugar)
 
 	nodeID, _ := uuid.FromString("24bbe1f7-3ac0-4489-9450-e62f262f818b")
@@ -176,6 +184,7 @@ func main() {
 			var err error
 			upstreams := director.NewUpstreams(20)
 			d := director.New(logger, r.GetPathInfo, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
+				retry.New(logger),
 				istio.New(nodeID.String(), reporter.C, istio.Outbound),
 				opentracingmw.New(logger, t, opentracingmw.Client),
 			)
@@ -234,7 +243,7 @@ func main() {
 		g.Add(func() error {
 			return reporter.Process()
 		}, func(error) {
-			reporter.Stop()
+			reporter.Close()
 		})
 	}
 	// This function just sits and waits for ctrl-C.

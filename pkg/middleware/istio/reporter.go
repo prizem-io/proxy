@@ -100,7 +100,7 @@ func (r *Reporter) Flush() error {
 	return nil
 }
 
-func (r *Reporter) Stop() {
+func (r *Reporter) Close() {
 	close(r.stop)
 	<-r.done
 }

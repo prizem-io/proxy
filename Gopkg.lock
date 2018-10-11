@@ -191,7 +191,7 @@
 
 [[projects]]
   branch = "feature/refactoring"
-  digest = "1:851d116869663c51831e3b12e65c81ec56a8ba9594cdd26d76015f871a320f4a"
+  digest = "1:401305c281a937c9c127133175ad8fdcab8c55c6426fb5914e2c803a728810d4"
   name = "github.com/prizem-io/h2"
   packages = [
     "frames",
@@ -199,7 +199,7 @@
     "proxy",
   ]
   pruneopts = "UT"
-  revision = "29dc79bbf604569cde4fd1249fca13f78d33151d"
+  revision = "7330085a1b7fce284a7f601e6f1468c505883059"
 
 [[projects]]
   branch = "master"
@@ -445,6 +445,7 @@
     "golang.org/x/net/context",
     "google.golang.org/grpc",
     "google.golang.org/grpc/codes",
+    "google.golang.org/grpc/grpclog",
     "google.golang.org/grpc/status",
     "istio.io/istio/mixer/pkg/pool",
     "istio.io/istio/pkg/log",
