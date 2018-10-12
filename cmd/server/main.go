@@ -184,7 +184,7 @@ func main() {
 			var err error
 			upstreams := director.NewUpstreams(20)
 			d := director.New(logger, r.GetPathInfo, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
-				retry.New(logger),
+				retry.New(logger, retry.RetryableRead5XX),
 				istio.New(nodeID.String(), reporter.C, istio.Outbound),
 				opentracingmw.New(logger, t, opentracingmw.Client),
 			)

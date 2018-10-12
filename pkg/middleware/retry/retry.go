@@ -17,7 +17,8 @@ import (
 
 type (
 	Retry struct {
-		logger log.Logger
+		logger            log.Logger
+		defaultClassifier ResponseClassifier
 	}
 
 	State struct {
@@ -31,10 +32,12 @@ type (
 		_recvBuf [10]frame
 		recvBuf  []frame
 
-		retry    *api.Retry
-		attempts int
-		done     chan struct{}
-		doRetry  bool
+		retry          *api.Retry
+		classifier     ResponseClassifier
+		requestHeaders proxy.Headers
+		attempts       int
+		done           chan struct{}
+		doRetry        bool
 	}
 
 	frame struct {
@@ -43,15 +46,16 @@ type (
 	}
 )
 
-func Load(logger log.Logger) proxy.MiddlewareLoader {
+func Load(logger log.Logger, classifier ResponseClassifier) proxy.MiddlewareLoader {
 	return func(input interface{}) (proxy.Middleware, error) {
-		return New(logger), nil
+		return New(logger, classifier), nil
 	}
 }
 
-func New(logger log.Logger) *Retry {
+func New(logger log.Logger, defaultClassifier ResponseClassifier) *Retry {
 	return &Retry{
-		logger: logger,
+		logger:            logger,
+		defaultClassifier: defaultClassifier,
 	}
 }
 
@@ -74,13 +78,10 @@ func (f *Retry) SendHeaders(ctx *proxy.SHContext, params *proxy.HeadersParams, e
 	state.shctx = *ctx // Make a copy of the send headers context
 	state.sendBuf = append(state.sendBuf, frame{headers: params})
 
-	if state.retry == nil {
-		proxyInfo := ctx.Info.(*director.ProxyInfo)
-		if proxyInfo.Operation.Retry != nil {
-			state.retry = proxyInfo.Operation.Retry
-		} else if proxyInfo.Service.Retry != nil {
-			state.retry = proxyInfo.Service.Retry
-		}
+	f.checkState(ctx.Info, state)
+
+	if state.requestHeaders == nil {
+		state.requestHeaders = params.Headers
 	}
 
 	if endStream {
@@ -95,6 +96,8 @@ func (f *Retry) SendData(ctx *proxy.SDContext, data []byte, endStream bool) erro
 
 	state.sdctx = *ctx // Make a copy of the send data context
 	state.sendBuf = append(state.sendBuf, frame{data: data})
+
+	f.checkState(ctx.Info, state)
 
 	if endStream {
 		proxyInfo := ctx.Info.(*director.ProxyInfo)
@@ -206,12 +209,16 @@ func (f *Retry) ReceiveHeaders(ctx *proxy.RHContext, params *proxy.HeadersParams
 				return err
 			}
 
-			if status/100 == 5 && state.attempts < state.retry.Attempts {
-				// Prevent processing received data for this stream
-				ctx.Upstream.CancelStream(ctx.Stream)
-				state.doRetry = true
-				state.done <- struct{}{}
-				return nil
+			if state.requestHeaders != nil {
+				responseType := state.classifier(state.requestHeaders, status)
+
+				if responseType == RetryableFailure && state.attempts < state.retry.Attempts {
+					// Prevent processing received data for this stream
+					ctx.Upstream.CancelStream(ctx.Stream)
+					state.doRetry = true
+					state.done <- struct{}{}
+					return nil
+				}
 			}
 		}
 	}
@@ -239,4 +246,28 @@ func (f *Retry) ReceiveData(ctx *proxy.RDContext, data []byte, endStream bool) e
 
 	// Next is called from waitForCallback
 	return nil
+}
+
+func (f *Retry) checkState(info interface{}, state *State) {
+	if state.retry == nil {
+		proxyInfo := info.(*director.ProxyInfo)
+		if proxyInfo.Operation.Retry != nil {
+			state.retry = proxyInfo.Operation.Retry
+		} else if proxyInfo.Service.Retry != nil {
+			state.retry = proxyInfo.Service.Retry
+		}
+	}
+	if state.classifier == nil {
+		state.classifier = f.defaultClassifier
+		if state.retry != nil {
+			if state.retry.ResponseClassifier != "" {
+				c, ok := ResponseClassifiers[state.retry.ResponseClassifier]
+				if ok {
+					state.classifier = c
+				} else {
+					f.logger.Warnf("unknown response classifier %q", state.retry.ResponseClassifier)
+				}
+			}
+		}
+	}
 }
