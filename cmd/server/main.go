@@ -1,3 +1,7 @@
+// Copyright 2018 The Prizem Authors. All rights reserved.
+// Use of this source code is governed by a MIT-style
+// license that can be found in the LICENSE file.
+
 package main
 
 import (
@@ -65,7 +69,7 @@ func main() {
 	flag.IntVar(&registerListenPort, "registerPort", registerListenPort, "The register listening port")
 	flag.StringVar(&controlPlaneRESTURI, "controlPlaneRESTURI", "http://localhost:8000", "The control plane REST URI")
 	flag.StringVar(&controlPlaneGRPCURI, "controlPlaneGRPCURI", "localhost:9000", "The control plane gRPC URI")
-	flag.StringVar(&istioMixerURI, "istioMixerURI", "localhost:9000", "The Istio Mixer URI")
+	flag.StringVar(&istioMixerURI, "istioMixerURI", "localhost:9091", "The Istio Mixer URI")
 	flag.Parse()
 
 	// Load TLS key pair
@@ -91,6 +95,10 @@ func main() {
 		logger.Errorf("Failed attempt: %v -> will retry in %s", err, d)
 	}
 
+	logger.Infof("Control Plane URIs:")
+	logger.Infof("- REST %s", controlPlaneRESTURI)
+	logger.Infof("- gRPC %s", controlPlaneGRPCURI)
+
 	r := discovery.NewRoutes(logger, controlPlaneRESTURI, policies)
 	e := discovery.NewEndpoints(logger, controlPlaneRESTURI)
 	l := discovery.NewLocal()
@@ -103,6 +111,7 @@ func main() {
 	}
 
 	eb.Reset()
+	logger.Infof("Subscribing to routes...")
 	err = backoff.RetryNotify(controller.SubscribeToRoutes, eb, notify)
 	if err != nil {
 		logger.Fatalf("Could not subscribe to routes: %v", err)
@@ -110,6 +119,7 @@ func main() {
 	defer controller.UnsubscribeFromRoutes()
 
 	eb.Reset()
+	logger.Infof("Subscribing to endpoints...")
 	err = backoff.RetryNotify(controller.SubscribeToEndpoints, eb, notify)
 	if err != nil {
 		logger.Fatalf("Could not subscribe to endpoints: %v", err)
