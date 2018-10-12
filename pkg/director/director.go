@@ -184,7 +184,8 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 
 		upstream, err = dial(url, tlsConfig)
 		if err != nil {
-			return proxy.Target{}, err
+			err = proxy.NormalizeNetworkError(err)
+			return proxy.Target{}, errors.Wrap(err, url)
 		}
 
 		d.upstreams.Put(upstreamKey, upstream)

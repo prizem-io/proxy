@@ -15,10 +15,22 @@ import (
 	"github.com/prizem-io/proxy/pkg/log"
 )
 
+// UpstreamSelection is an enumeration to determine if a retry
+// attempt should use the same upstream or select a new one.
+type UpstreamSelection int
+
+const (
+	// SameUpstream indicates that the same upstream should be retried.
+	SameUpstream UpstreamSelection = iota
+	// NewUpstream indicates that the request should be retried on a different upstream.
+	NewUpstream
+)
+
 type (
 	Retry struct {
 		logger            log.Logger
 		defaultClassifier ResponseClassifier
+		upstreamSelection UpstreamSelection
 	}
 
 	State struct {
@@ -46,16 +58,17 @@ type (
 	}
 )
 
-func Load(logger log.Logger, classifier ResponseClassifier) proxy.MiddlewareLoader {
+func Load(logger log.Logger, classifier ResponseClassifier, upstreamSelection UpstreamSelection) proxy.MiddlewareLoader {
 	return func(input interface{}) (proxy.Middleware, error) {
-		return New(logger, classifier), nil
+		return New(logger, classifier, upstreamSelection), nil
 	}
 }
 
-func New(logger log.Logger, defaultClassifier ResponseClassifier) *Retry {
+func New(logger log.Logger, defaultClassifier ResponseClassifier, upstreamSelection UpstreamSelection) *Retry {
 	return &Retry{
 		logger:            logger,
 		defaultClassifier: defaultClassifier,
+		upstreamSelection: upstreamSelection,
 	}
 }
 
@@ -166,8 +179,16 @@ func (f *Retry) waitForCallback(stream *proxy.Stream, proxyInfo *director.ProxyI
 			state.doRetry = false
 			state.recvBuf = state.recvBuf[:0]
 			f.logger.Infof("Retry attempt # %d", state.attempts)
-			// TODO: Select new upstream connection ???
-			stream.Upstream.RetryStream(stream)
+			switch f.upstreamSelection {
+			case SameUpstream:
+				stream.Upstream.RetryStream(stream)
+			case NewUpstream:
+				ok, err := stream.Connection.DirectStream(stream, state.requestHeaders)
+				if err != nil || !ok {
+					proxy.RespondWithError(stream, proxy.ErrInternalServerError, 500)
+					return
+				}
+			}
 
 			// Send buffered request
 			for i, f := range state.sendBuf {
@@ -261,9 +282,9 @@ func (f *Retry) checkState(info interface{}, state *State) {
 		state.classifier = f.defaultClassifier
 		if state.retry != nil {
 			if state.retry.ResponseClassifier != "" {
-				c, ok := ResponseClassifiers[state.retry.ResponseClassifier]
+				classifier, ok := ResponseClassifiers[state.retry.ResponseClassifier]
 				if ok {
-					state.classifier = c
+					state.classifier = classifier
 				} else {
 					f.logger.Warnf("unknown response classifier %q", state.retry.ResponseClassifier)
 				}
