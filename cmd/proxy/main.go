@@ -156,6 +156,7 @@ func main() {
 	}
 	client := mixer.NewMixerClient(conn)
 	reporter := istio.NewReporter(client, 10000, 5*time.Second)
+	outlierMonitor := director.NewOutlierMonitor(logger, 1000, 5, 30*time.Second)
 
 	//////
 
@@ -166,7 +167,7 @@ func main() {
 		var listener net.Listener
 		g.Add(func() error {
 			upstreams := director.NewUpstreams(20)
-			d := director.New(logger, r.GetPathInfo, e.GetSourceInstance, l.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, nil, director.RoundRobin,
+			d := director.New(logger, r.GetPathInfo, director.AlwaysService, e.GetSourceInstance, l.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, nil, director.RoundRobin,
 				timer.New(logger),
 				istio.New(nodeID.String(), reporter.C, istio.Inbound),
 				opentracingmw.New(logger, t, opentracingmw.Server),
@@ -193,8 +194,8 @@ func main() {
 		g.Add(func() error {
 			var err error
 			upstreams := director.NewUpstreams(20)
-			d := director.New(logger, r.GetPathInfo, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
-				retry.New(logger, retry.RetryableRead5XX, retry.NewUpstream),
+			d := director.New(logger, r.GetPathInfo, outlierMonitor.IsServiceable, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
+				retry.New(logger, retry.RetryableRead5XX, retry.NewUpstream, outlierMonitor),
 				istio.New(nodeID.String(), reporter.C, istio.Outbound),
 				opentracingmw.New(logger, t, opentracingmw.Client),
 			)
@@ -254,6 +255,15 @@ func main() {
 			return reporter.Process()
 		}, func(error) {
 			reporter.Close()
+		})
+	}
+	// Outlier monitoring
+	{
+		g.Add(func() error {
+			outlierMonitor.Process()
+			return nil
+		}, func(error) {
+			outlierMonitor.Close()
 		})
 	}
 	// This function just sits and waits for ctrl-C.

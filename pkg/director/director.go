@@ -23,6 +23,7 @@ import (
 type Director struct {
 	logger           log.Logger
 	pathInfo         PathInfoFn
+	serviceChecker   ServiceChecker
 	sourceInstance   SourceInstanceFn
 	destinationNodes DestinationNodesFn
 	loadBalancer     LoadBalancer
@@ -49,41 +50,67 @@ type Authorization struct {
 	Claims    map[string]string
 }
 
+type ServiceChecker func(proxyInfo *ProxyInfo) bool
 type PathInfoFn func(method, path string) (*discovery.PathInfo, error)
 type SourceInstanceFn func(remoteAddr net.Addr, headers proxy.Headers) (*api.ServiceInstance, error)
 type DestinationNodesFn func(service string) (*discovery.ServiceNodes, error)
 
-type LoadBalancer func(serviceNodes *discovery.ServiceNodes, nodes []*api.Node, upstreams *Upstreams) *api.Node
+type LoadBalancer func(proxyInfo *ProxyInfo, serviceNodes *discovery.ServiceNodes, nodes []*api.Node, upstreams *Upstreams, serviceChecker ServiceChecker) *api.Node
 
-func RoundRobin(serviceNodes *discovery.ServiceNodes, nodes []*api.Node, _ *Upstreams) *api.Node {
-	index := atomic.AddUint32(&serviceNodes.NodeIndex, 1)
-	node := nodes[index%uint32(len(nodes))]
-	return node
+// AlwaysService is a ServiceChecker that always allows the request / upstream / service instance to be processed.
+func AlwaysService(proxyInfo *ProxyInfo) bool {
+	return true
 }
 
-func LeastLoad(serviceNodes *discovery.ServiceNodes, nodes []*api.Node, upstreams *Upstreams) *api.Node {
+func RoundRobin(proxyInfo *ProxyInfo, serviceNodes *discovery.ServiceNodes, nodes []*api.Node, _ *Upstreams, serviceChecker ServiceChecker) *api.Node {
+	for i := 0; i < len(nodes); i++ {
+		index := atomic.AddUint32(&serviceNodes.NodeIndex, 1)
+		node := nodes[index%uint32(len(nodes))]
+
+		proxyInfo.Destination = &node.Services[0]
+		if serviceChecker(proxyInfo) {
+			return node
+		}
+	}
+
+	return nil
+}
+
+func LeastLoad(proxyInfo *ProxyInfo, serviceNodes *discovery.ServiceNodes, nodes []*api.Node, upstreams *Upstreams, serviceChecker ServiceChecker) *api.Node {
 	leastStreams := math.MaxInt32
-	leastIndex := 0
-	for i := range nodes {
-		key := upstreams.Key(nodes[i], &serviceNodes.Service.Ports[0])
+	var selectedNode *api.Node
+
+	for _, node := range nodes {
+		proxyInfo.Destination = &node.Services[0]
+		if !serviceChecker(proxyInfo) {
+			continue
+		}
+
+		if selectedNode == nil {
+			selectedNode = node
+			continue
+		}
+		key := upstreams.Key(node, &serviceNodes.Service.Ports[0])
 		upstream, ok := upstreams.Get(key)
 
 		if ok {
 			streamCount := upstream.StreamCount()
 			if streamCount < leastStreams {
-				leastIndex = i
+				selectedNode = node
+				leastStreams = streamCount
 			}
 		} else {
 			// A node not yet connected to
-			leastIndex = i
+			return node
 		}
 	}
 
-	return nodes[leastIndex]
+	return selectedNode
 }
 
 func New(logger log.Logger,
 	pathInfo PathInfoFn,
+	serviceChecker ServiceChecker,
 	sourceInstance SourceInstanceFn,
 	destinationNodes DestinationNodesFn,
 	upstreams *Upstreams,
@@ -94,6 +121,7 @@ func New(logger log.Logger,
 	return &Director{
 		logger:           logger,
 		pathInfo:         pathInfo,
+		serviceChecker:   serviceChecker,
 		sourceInstance:   sourceInstance,
 		destinationNodes: destinationNodes,
 		loadBalancer:     loadBalancer,
@@ -125,6 +153,12 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 		return proxy.Target{}, err
 	}
 
+	proxyInfo := ProxyInfo{
+		Service:   pathInfo.Service,
+		Operation: pathInfo.Operation,
+		Source:    source,
+	}
+
 	serviceNodes, err := d.destinationNodes(pathInfo.Service.Name)
 	if err != nil {
 		return proxy.Target{}, err
@@ -151,7 +185,11 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 		return proxy.Target{}, proxy.ErrServiceUnavailable
 	}
 
-	node := d.loadBalancer(serviceNodes, nodes, d.upstreams)
+	node := d.loadBalancer(&proxyInfo, serviceNodes, nodes, d.upstreams, d.serviceChecker)
+	if node == nil {
+		return proxy.Target{}, proxy.ErrServiceUnavailable
+	}
+	proxyInfo.Destination = &node.Services[0]
 	port := serviceNodes.Service.Ports[0]
 
 	upstreamKey := d.upstreams.Key(node, &port)
@@ -205,11 +243,6 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 	return proxy.Target{
 		Upstream:    upstream,
 		Middlewares: middleware,
-		Info: &ProxyInfo{
-			Service:     pathInfo.Service,
-			Operation:   pathInfo.Operation,
-			Source:      source,
-			Destination: serviceNodes.Service,
-		},
+		Info:        &proxyInfo,
 	}, nil
 }
