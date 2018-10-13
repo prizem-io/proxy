@@ -222,8 +222,7 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 
 		upstream, err = dial(url, tlsConfig)
 		if err != nil {
-			err = proxy.NormalizeNetworkError(err)
-			return proxy.Target{}, errors.Wrap(err, url)
+			return proxy.Target{}, errors.Wrapf(err, "could not connect to %s", url)
 		}
 
 		d.upstreams.Put(upstreamKey, upstream)
