@@ -57,19 +57,19 @@ func main() {
 
 	nodeID, _ := uuid.FromString("24bbe1f7-3ac0-4489-9450-e62f262f818b")
 
-	ingressListenPort := readEnv("INGRESS_PORT", 50052)
-	egressListenPort := readEnv("EGRESS_PORT", 50062)
-	registerListenPort := readEnv("REGISTER_PORT", 6060)
-	var controlPlaneRESTURI string
-	var controlPlaneGRPCURI string
-	var istioMixerURI string
+	ingressListenPort := readEnvInt("INGRESS_PORT", 50052)
+	egressListenPort := readEnvInt("EGRESS_PORT", 50062)
+	registerListenPort := readEnvInt("REGISTER_PORT", 6060)
+	controlPlaneRESTURI := readEnvString("REST_API_URI", "http://localhost:8000")
+	controlPlaneGRPCURI := readEnvString("GRPC_API_TARGET", "localhost:9000")
+	istioMixerURI := readEnvString("MIXER_TARGET", "localhost:9091")
 
 	flag.IntVar(&ingressListenPort, "ingressPort", ingressListenPort, "The ingress listening port")
 	flag.IntVar(&egressListenPort, "egressPort", egressListenPort, "The egress listening port")
 	flag.IntVar(&registerListenPort, "registerPort", registerListenPort, "The register listening port")
-	flag.StringVar(&controlPlaneRESTURI, "controlPlaneRESTURI", "http://localhost:8000", "The control plane REST URI")
-	flag.StringVar(&controlPlaneGRPCURI, "controlPlaneGRPCURI", "localhost:9000", "The control plane gRPC URI")
-	flag.StringVar(&istioMixerURI, "istioMixerURI", "localhost:9091", "The Istio Mixer URI")
+	flag.StringVar(&controlPlaneRESTURI, "controlPlaneRESTURI", controlPlaneRESTURI, "The control plane REST URI")
+	flag.StringVar(&controlPlaneGRPCURI, "controlPlaneGRPCURI", controlPlaneGRPCURI, "The control plane gRPC URI")
+	flag.StringVar(&istioMixerURI, "istioMixerURI", istioMixerURI, "The Istio Mixer URI")
 	flag.Parse()
 
 	// Load TLS key pair
@@ -289,7 +289,15 @@ func main() {
 	logger.Infof("exit %v", g.Run())
 }
 
-func readEnv(key string, defaultValue int) int {
+func readEnvString(key string, defaultValue string) string {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	return v
+}
+
+func readEnvInt(key string, defaultValue int) int {
 	if i, err := strconv.Atoi(os.Getenv(key)); err == nil {
 		return i
 	}
