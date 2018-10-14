@@ -242,7 +242,7 @@ func main() {
 		http.HandleFunc("/info", l.HandleInfo)
 
 		logger.Infof("Register starting on :%d", registerListenPort)
-		listener, _ := net.Listen("tcp", fmt.Sprintf("localhost:%d", registerListenPort))
+		listener, _ := net.Listen("tcp", fmt.Sprintf(":%d", registerListenPort))
 		g.Add(func() error {
 			return http.Serve(listener, nil)
 		}, func(error) {

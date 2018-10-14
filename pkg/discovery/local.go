@@ -108,10 +108,13 @@ func (l *Local) HandleRegister(nodeID uuid.UUID, controlPlaneRESTURI string, ing
 		}
 		serviceInstance.Prepare()
 
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			fmt.Fprintf(w, "ERROR")
-			return // TODO
+		host := r.Header.Get("X-Target-Host")
+		if host == "" {
+			host, _, err = net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				fmt.Fprintf(w, "ERROR")
+				return // TODO
+			}
 		}
 
 		if host == "::1" {
