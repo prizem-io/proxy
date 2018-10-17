@@ -133,15 +133,9 @@ func main() {
 
 	//////
 
-	cfg := &jaegerconfig.Configuration{
-		Sampler: &jaegerconfig.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &jaegerconfig.ReporterConfig{
-			LogSpans: true,
-		},
-	}
+	cfg, err := jaegerconfig.FromEnv()
+	cfg.Sampler.Type = "const"
+	cfg.Sampler.Param = 1
 	t := tracing.New(func(serviceName string) (opentracing.Tracer, io.Closer, error) {
 		return cfg.New(serviceName)
 	})
