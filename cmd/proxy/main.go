@@ -56,7 +56,7 @@ func main() {
 	logger := internallog.New(sugar)
 	proxy.SetLogger(sugar)
 
-	nodeID, _ := uuid.FromString("24bbe1f7-3ac0-4489-9450-e62f262f818b")
+	nodeID := uuid.NewV4()
 
 	ingressListenPort := readEnvInt("INGRESS_PORT", 50052)
 	egressListenPort := readEnvInt("EGRESS_PORT", 50062)
@@ -106,7 +106,7 @@ func main() {
 
 	r := discovery.NewRoutes(logger, controlPlaneRESTURI, policies)
 	e := discovery.NewEndpoints(logger, controlPlaneRESTURI)
-	l := discovery.NewLocal()
+	l := discovery.NewLocal(logger, nodeID, controlPlaneRESTURI, ingressListenPort)
 
 	logger.Infof("Connecting to control plane...")
 	controller := control.New(logger, uuid.NewV4().String(), controlPlaneGRPCURI, r, e)
@@ -238,8 +238,9 @@ func main() {
 	// Registration & Profiling endpoint
 	{
 		r := mux.NewRouter()
-		r.HandleFunc("/register", l.HandleRegister(nodeID, controlPlaneRESTURI, ingressListenPort)).Methods("POST")
-		r.HandleFunc("/register", l.HandleDeregister(nodeID, controlPlaneRESTURI)).Methods("DELETE")
+		r.HandleFunc("/register", l.HandleRegister).Methods("POST")
+		r.HandleFunc("/register", l.HandleDeregisterNode).Methods("DELETE")
+		r.HandleFunc("/register/{services}", l.HandleDeregisterServices).Methods("DELETE")
 		r.HandleFunc("/info", l.HandleInfo).Methods("GET")
 
 		logger.Infof("Register starting on :%d", registerListenPort)
@@ -248,6 +249,7 @@ func main() {
 			return http.Serve(listener, r)
 		}, func(error) {
 			listener.Close()
+			l.DeregisterNode()
 		})
 	}
 	// Istio telemetry reporter
