@@ -14,7 +14,7 @@ import (
 
 	"github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
-	uuid "github.com/satori/go.uuid"
+	"github.com/satori/go.uuid"
 )
 
 type Local struct {
@@ -179,6 +179,30 @@ func (l *Local) HandleRegister(nodeID uuid.UUID, controlPlaneRESTURI string, ing
 		defer resp.Body.Close()
 
 		if resp.StatusCode != 201 {
+			fmt.Fprintf(w, "ERROR")
+			return // TODO
+		}
+
+		fmt.Fprintf(w, "OK")
+	}
+}
+
+func (l *Local) HandleDeregister(nodeID uuid.UUID, controlPlaneRESTURI string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/v1/endpoints", controlPlaneRESTURI), nil)
+		if err != nil {
+			fmt.Fprintf(w, "ERROR")
+			return // TODO
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			fmt.Fprintf(w, "ERROR")
+			return // TODO
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode/100 != 2 {
 			fmt.Fprintf(w, "ERROR")
 			return // TODO
 		}

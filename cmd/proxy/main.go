@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff"
+	"github.com/gorilla/mux"
 	mixer "github.com/istio/api/mixer/v1"
 	"github.com/oklog/run"
 	"github.com/opentracing/opentracing-go"
@@ -63,6 +64,8 @@ func main() {
 	controlPlaneRESTURI := readEnvString("REST_API_URI", "http://localhost:8000")
 	controlPlaneGRPCURI := readEnvString("GRPC_API_TARGET", "localhost:9000")
 	istioMixerURI := readEnvString("MIXER_TARGET", "localhost:9091")
+	ingressCertPath := readEnvString("INGRESS_CERT_PATH", "etc/backend.cert")
+	ingressKeyPath := readEnvString("INGRESS_KEY_PATH", "etc/backend.key")
 
 	flag.IntVar(&ingressListenPort, "ingressPort", ingressListenPort, "The ingress listening port")
 	flag.IntVar(&egressListenPort, "egressPort", egressListenPort, "The egress listening port")
@@ -70,11 +73,13 @@ func main() {
 	flag.StringVar(&controlPlaneRESTURI, "controlPlaneRESTURI", controlPlaneRESTURI, "The control plane REST URI")
 	flag.StringVar(&controlPlaneGRPCURI, "controlPlaneGRPCURI", controlPlaneGRPCURI, "The control plane gRPC URI")
 	flag.StringVar(&istioMixerURI, "istioMixerURI", istioMixerURI, "The Istio Mixer URI")
+	flag.StringVar(&ingressCertPath, "ingressCertPath", ingressCertPath, "The ingress certificate path")
+	flag.StringVar(&ingressKeyPath, "ingressKeyPath", ingressKeyPath, "The ingress key path")
 	flag.Parse()
 
 	// Load TLS key pair
 
-	keyPairReloader, err := tlsreloader.NewKeyPairReloader(logger, "etc/backend.cert", "etc/backend.key")
+	keyPairReloader, err := tlsreloader.NewKeyPairReloader(logger, ingressCertPath, ingressKeyPath)
 	if err != nil {
 		logger.Fatalf("Could not load key pair: %v", err)
 	}
@@ -92,7 +97,7 @@ func main() {
 
 	eb := backoff.NewExponentialBackOff()
 	notify := func(err error, d time.Duration) {
-		logger.Errorf("Failed attempt: %v -> will retry in %s", err, d)
+		logger.Infof("Failed attempt: %v -> will retry in %s", err, d)
 	}
 
 	logger.Infof("Control Plane URIs:")
@@ -238,13 +243,15 @@ func main() {
 	}
 	// Registration & Profiling endpoint
 	{
-		http.HandleFunc("/register", l.HandleRegister(nodeID, controlPlaneRESTURI, ingressListenPort))
-		http.HandleFunc("/info", l.HandleInfo)
+		r := mux.NewRouter()
+		r.HandleFunc("/register", l.HandleRegister(nodeID, controlPlaneRESTURI, ingressListenPort)).Methods("POST")
+		r.HandleFunc("/register", l.HandleDeregister(nodeID, controlPlaneRESTURI)).Methods("DELETE")
+		r.HandleFunc("/info", l.HandleInfo).Methods("GET")
 
 		logger.Infof("Register starting on :%d", registerListenPort)
 		listener, _ := net.Listen("tcp", fmt.Sprintf(":%d", registerListenPort))
 		g.Add(func() error {
-			return http.Serve(listener, nil)
+			return http.Serve(listener, r)
 		}, func(error) {
 			listener.Close()
 		})
