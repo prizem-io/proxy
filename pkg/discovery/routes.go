@@ -47,11 +47,16 @@ var (
 )
 
 func NewRoutes(logger log.Logger, baseURL string, policies map[string]proxy.MiddlewareLoader) *Routes {
-	return &Routes{
+	serviceMap := map[string]*api.Service{}
+	routes := routerstore.New()
+	r := Routes{
 		logger:   logger,
 		url:      fmt.Sprintf("%s/v1/routes", baseURL),
 		policies: policies,
 	}
+	atomic.StorePointer(&r.router, unsafe.Pointer(routes))
+	atomic.StorePointer(&r.catalog, unsafe.Pointer(&serviceMap))
+	return &r
 }
 
 func (r *Routes) RequestCatalog() error {
@@ -94,7 +99,6 @@ func (r *Routes) RequestCatalog() error {
 
 func (r *Routes) StoreRoutes(version int64, services []api.Service) bool {
 	serviceMap := make(map[string]*api.Service)
-
 	routes := routerstore.New()
 
 	for i := range services {

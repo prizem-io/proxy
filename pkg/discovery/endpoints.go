@@ -45,10 +45,17 @@ type (
 )
 
 func NewEndpoints(logger log.Logger, baseURL string) *Endpoints {
-	return &Endpoints{
+	serviceNodes := map[string]*ServiceNodes{}
+	sourceNodes := map[uuid.UUID]*ServiceNodes{}
+	nodeServices := map[uuid.UUID]*api.Node{}
+	e := Endpoints{
 		logger: logger,
 		url:    fmt.Sprintf("%s/v1/endpoints", baseURL),
 	}
+	atomic.StorePointer(&e.serivceNodes, unsafe.Pointer(&serviceNodes))
+	atomic.StorePointer(&e.sourceNodes, unsafe.Pointer(&sourceNodes))
+	atomic.StorePointer(&e.nodeServices, unsafe.Pointer(&nodeServices))
+	return &e
 }
 
 func (e *Endpoints) RequestCatalog() error {
