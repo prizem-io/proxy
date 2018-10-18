@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/prizem-io/proxy/discovery"
+	"github.com/prizem-io/proxy/pkg/discovery"
 )
 
 type HealthStatus int
