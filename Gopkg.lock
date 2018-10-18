@@ -211,7 +211,7 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:23bd6d5b7596bf8be38e5811be4aaaa3ca172c4388b3f922f80e4e611308b32a"
+  digest = "1:102f5aed35a5537debafb9d72bf2da59c39b806700818a3d2cae26dd69c79ff0"
   name = "github.com/prizem-io/api"
   packages = [
     "v1",
@@ -219,7 +219,7 @@
     "v1/proto",
   ]
   pruneopts = "UT"
-  revision = "4890f9a15d89959d76c86026f71f03a7a9a91a1e"
+  revision = "dfbecc702d107142c92f24925c592853660e5fbe"
 
 [[projects]]
   branch = "feature/refactoring"
