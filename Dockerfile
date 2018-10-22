@@ -19,8 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -installsuffix cgo -ldflag
 FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /build/proxy /app/proxy
 COPY --from=builder /app /app
+COPY --from=builder /build/proxy /app/proxy
 WORKDIR /app
 USER appuser
 
