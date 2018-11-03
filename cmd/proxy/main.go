@@ -23,9 +23,12 @@ import (
 
 	"github.com/cenkalti/backoff"
 	"github.com/gorilla/mux"
+	consulapi "github.com/hashicorp/consul/api"
 	mixer "github.com/istio/api/mixer/v1"
 	"github.com/oklog/run"
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
+	api "github.com/prizem-io/api/v1"
 	"github.com/prizem-io/h2/proxy"
 	"github.com/satori/go.uuid"
 	jaegerconfig "github.com/uber/jaeger-client-go/config"
@@ -42,6 +45,7 @@ import (
 	"github.com/prizem-io/proxy/pkg/middleware/retry"
 	"github.com/prizem-io/proxy/pkg/middleware/timer"
 	tlsreloader "github.com/prizem-io/proxy/pkg/tls"
+	"github.com/prizem-io/proxy/pkg/tls/consul"
 	tracing "github.com/prizem-io/proxy/pkg/tracing/opentracing"
 )
 
@@ -160,12 +164,28 @@ func main() {
 
 	//////
 
+	// Create a Consul API client
+	consulClient, err := consulapi.NewClient(consulapi.DefaultConfig())
+	if err != nil {
+		logger.Fatalf("did not connect: %v", err)
+	}
+	consulManager := consul.New(consulClient)
+	defer consulManager.Close()
+
+	s, err := consulManager.GetService("test")
+	if err != nil {
+		logger.Fatalf("did not get consul connect service: %v", err)
+	}
+
+	//////
+
 	var g run.Group
 
 	// Ingress listener (TLS) - connects to local services
 	{
 		var listener net.Listener
 		g.Add(func() error {
+			tlsc := s.ServerTLSConfig()
 			upstreams := director.NewUpstreams(director.PerNode, 20)
 			d := director.New(logger, r.GetPathInfo, director.AlwaysService, e.GetSourceInstance, l.GetServiceNodes, upstreams, director.DefaultUpstreamDialers, simpleDialer, nil, director.RoundRobin,
 				timer.New(logger),
@@ -179,7 +199,7 @@ func main() {
 				return err
 			}
 
-			listener = tls.NewListener(ln, &tlsConfig)
+			listener = tls.NewListener(ln, tlsc)
 
 			return proxy.Listen(listener, d.Direct)
 		}, func(error) {
@@ -192,9 +212,36 @@ func main() {
 	{
 		var listener net.Listener
 		g.Add(func() error {
+			dialers := director.UpstreamDialers{
+				{
+					Name: "HTTP/2",
+					Dailer: func(_ *api.ServiceInstance, service *api.Service, node *api.Node, port *api.Port, dialer proxy.Dialer) (proxy.Upstream, error) {
+						address := net.JoinHostPort(node.Address.String(), strconv.Itoa(int(port.Port)))
+						conn, err := s.Dial(service, node, address)
+						if err != nil {
+							return nil, errors.Wrapf(err, "could not connect to %s", address)
+						}
+						return proxy.NewH2Upstream(conn)
+					},
+				},
+				{
+					Name: "HTTP/1",
+					Dailer: func(_ *api.ServiceInstance, service *api.Service, node *api.Node, port *api.Port, dialer proxy.Dialer) (proxy.Upstream, error) {
+						address := net.JoinHostPort(node.Address.String(), strconv.Itoa(int(port.Port)))
+						consulDialer := func(address string, secure bool) (net.Conn, error) {
+							if secure {
+								return s.Dial(service, node, address)
+							}
+							return dialer(address, false)
+						}
+						return proxy.NewH1Upstream(address, port.Secure, consulDialer)
+					},
+				},
+			}
+
 			var err error
-			upstreams := director.NewUpstreams(director.PerNode, 20)
-			d := director.New(logger, r.GetPathInfo, outlierMonitor.IsServiceable, l.GetSourceInstance, e.GetServiceNodes, upstreams, director.DefaultUpstreamDialers, simpleDialer, nil, director.LeastLoad,
+			upstreams := director.NewUpstreams(director.PerService, 20)
+			d := director.New(logger, r.GetPathInfo, outlierMonitor.IsServiceable, l.GetSourceInstance, e.GetServiceNodes, upstreams, dialers, simpleDialer, nil, director.LeastLoad,
 				retry.New(logger, retry.RetryableRead5XX, retry.NewUpstream, outlierMonitor),
 				istio.New(nodeID.String(), reporter.C, istio.Outbound),
 				opentracingmw.New(logger, t, opentracingmw.Client),
