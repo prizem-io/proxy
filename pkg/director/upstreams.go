@@ -9,18 +9,30 @@ import (
 	"github.com/prizem-io/h2/proxy"
 )
 
+type ConnectionSharingMode int
+
+const (
+	PerNode ConnectionSharingMode = iota
+	PerService
+)
+
 type Upstreams struct {
+	sharingMode ConnectionSharingMode
 	upstreamsMu sync.RWMutex
 	upstreams   map[string]proxy.Upstream
 }
 
-func NewUpstreams(size int) *Upstreams {
+func NewUpstreams(sharingMode ConnectionSharingMode, size int) *Upstreams {
 	return &Upstreams{
-		upstreams: make(map[string]proxy.Upstream, size),
+		sharingMode: sharingMode,
+		upstreams:   make(map[string]proxy.Upstream, size),
 	}
 }
 
-func (u *Upstreams) Key(node *api.Node, port *api.Port) string {
+func (u *Upstreams) Key(service *api.Service, node *api.Node, port *api.Port) string {
+	if u.sharingMode == PerService {
+		return service.Name + "|" + net.JoinHostPort(node.Address.String(), strconv.Itoa(int(port.Port))) + ":" + port.Protocol
+	}
 	return net.JoinHostPort(node.Address.String(), strconv.Itoa(int(port.Port))) + ":" + port.Protocol
 }
 

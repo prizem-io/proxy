@@ -5,10 +5,8 @@
 package director
 
 import (
-	"crypto/tls"
 	"math"
 	"net"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/pkg/errors"
@@ -21,16 +19,17 @@ import (
 )
 
 type Director struct {
-	logger           log.Logger
-	pathInfo         PathInfoFn
-	serviceChecker   ServiceChecker
-	sourceInstance   SourceInstanceFn
-	destinationNodes DestinationNodesFn
-	loadBalancer     LoadBalancer
-	upstreams        *Upstreams
-	dialers          proxy.UpstreamDialers
-	tlsConfig        *tls.Config
-	middleware       []proxy.Middleware
+	logger            log.Logger
+	pathInfo          PathInfoFn
+	serviceChecker    ServiceChecker
+	sourceInstance    SourceInstanceFn
+	destinationNodes  DestinationNodesFn
+	loadBalancer      LoadBalancer
+	upstreams         *Upstreams
+	dialers           UpstreamDialers
+	dialer            proxy.Dialer
+	connectionChecker ConnectionChecker
+	middleware        []proxy.Middleware
 }
 
 type ProxyInfo struct {
@@ -38,6 +37,8 @@ type ProxyInfo struct {
 	Operation   *api.Operation
 	Source      *api.ServiceInstance
 	Destination *api.ServiceInstance
+	Node        *api.Node
+	Port        *api.Port
 	APIKey      string
 	Version     string
 	Authorization
@@ -54,6 +55,7 @@ type ServiceChecker func(proxyInfo *ProxyInfo) bool
 type PathInfoFn func(method, path string) (*discovery.PathInfo, error)
 type SourceInstanceFn func(remoteAddr net.Addr, headers proxy.Headers) (*api.ServiceInstance, error)
 type DestinationNodesFn func(service string) (*discovery.ServiceNodes, error)
+type ConnectionChecker func(conn net.Conn, pathInfo *discovery.PathInfo) error
 
 type LoadBalancer func(proxyInfo *ProxyInfo, serviceNodes *discovery.ServiceNodes, nodes []*api.Node, upstreams *Upstreams, serviceChecker ServiceChecker) *api.Node
 
@@ -90,7 +92,7 @@ func LeastLoad(proxyInfo *ProxyInfo, serviceNodes *discovery.ServiceNodes, nodes
 			selectedNode = node
 			continue
 		}
-		key := upstreams.Key(node, &serviceNodes.Service.Ports[0])
+		key := upstreams.Key(proxyInfo.Service, node, &serviceNodes.Service.Ports[0])
 		upstream, ok := upstreams.Get(key)
 
 		if ok {
@@ -114,25 +116,27 @@ func New(logger log.Logger,
 	sourceInstance SourceInstanceFn,
 	destinationNodes DestinationNodesFn,
 	upstreams *Upstreams,
-	dialers proxy.UpstreamDialers,
-	tlsConfig *tls.Config,
+	dialers UpstreamDialers,
+	dialer proxy.Dialer,
+	connectionChecker ConnectionChecker,
 	loadBalancer LoadBalancer,
 	middleware ...proxy.Middleware) *Director {
 	return &Director{
-		logger:           logger,
-		pathInfo:         pathInfo,
-		serviceChecker:   serviceChecker,
-		sourceInstance:   sourceInstance,
-		destinationNodes: destinationNodes,
-		loadBalancer:     loadBalancer,
-		upstreams:        upstreams,
-		dialers:          dialers,
-		tlsConfig:        tlsConfig,
-		middleware:       middleware,
+		logger:            logger,
+		pathInfo:          pathInfo,
+		serviceChecker:    serviceChecker,
+		sourceInstance:    sourceInstance,
+		destinationNodes:  destinationNodes,
+		loadBalancer:      loadBalancer,
+		upstreams:         upstreams,
+		dialers:           dialers,
+		dialer:            dialer,
+		connectionChecker: connectionChecker,
+		middleware:        middleware,
 	}
 }
 
-func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Target, error) {
+func (d *Director) Direct(conn net.Conn, headers proxy.Headers) (proxy.Target, error) {
 	method := headers.ByName(":method")
 	path := headers.ByName(":path")
 
@@ -146,9 +150,17 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 		return proxy.Target{}, err
 	}
 
-	//fmt.Printf("service name = %s\n", info.Service.Name)
+	if d.connectionChecker != nil {
+		err := d.connectionChecker(conn, pathInfo)
+		if err != nil {
+			d.logger.Error(err)
+			return proxy.Target{}, err
+		}
+	}
 
-	source, err := d.sourceInstance(remoteAddr, headers)
+	//fmt.Printf("service name = %s\n", pathInfo.Service.Name)
+
+	source, err := d.sourceInstance(conn.RemoteAddr(), headers)
 	if err != nil {
 		return proxy.Target{}, err
 	}
@@ -191,8 +203,10 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 	}
 	proxyInfo.Destination = &node.Services[0]
 	port := serviceNodes.Service.Ports[0]
+	proxyInfo.Node = node
+	proxyInfo.Port = &port
 
-	upstreamKey := d.upstreams.Key(node, &port)
+	upstreamKey := d.upstreams.Key(proxyInfo.Service, node, &port)
 	upstream, ok := d.upstreams.Get(upstreamKey)
 	//ok = false // TESTING
 
@@ -210,19 +224,13 @@ func (d *Director) Direct(remoteAddr net.Addr, headers proxy.Headers) (proxy.Tar
 		d.logger.Infof("Connecting to upstream %s", upstreamKey)
 		dial, ok := d.dialers.ForName(port.Protocol)
 		if !ok {
-			return proxy.Target{}, errors.Errorf("Unknown upstream %s", port.Protocol)
+			return proxy.Target{}, errors.Errorf("no registered dialer for protocol %q", port.Protocol)
 		}
 
-		url := net.JoinHostPort(node.Address.String(), strconv.Itoa(int(port.Port)))
-
-		var tlsConfig *tls.Config
-		if port.Secure {
-			tlsConfig = d.tlsConfig
-		}
-
-		upstream, err = dial(url, tlsConfig)
+		upstream, err = dial(proxyInfo.Source, proxyInfo.Service, node, &port, d.dialer)
 		if err != nil {
-			return proxy.Target{}, errors.Wrapf(err, "could not connect to %s", url)
+			d.logger.Error(err)
+			return proxy.Target{}, errors.Wrapf(err, "could not connect to service %q", proxyInfo.Service.Name)
 		}
 
 		d.upstreams.Put(upstreamKey, upstream)

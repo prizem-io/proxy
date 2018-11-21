@@ -90,6 +90,7 @@ func main() {
 		GetCertificate:           keyPairReloader.GetCertificateFunc(),
 		InsecureSkipVerify:       true,
 	}
+	simpleDialer := director.SimpleDailer(&tlsConfig)
 
 	// Route & Endpoint Discovery
 
@@ -165,8 +166,8 @@ func main() {
 	{
 		var listener net.Listener
 		g.Add(func() error {
-			upstreams := director.NewUpstreams(20)
-			d := director.New(logger, r.GetPathInfo, director.AlwaysService, e.GetSourceInstance, l.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, nil, director.RoundRobin,
+			upstreams := director.NewUpstreams(director.PerNode, 20)
+			d := director.New(logger, r.GetPathInfo, director.AlwaysService, e.GetSourceInstance, l.GetServiceNodes, upstreams, director.DefaultUpstreamDialers, simpleDialer, nil, director.RoundRobin,
 				timer.New(logger),
 				istio.New(nodeID.String(), reporter.C, istio.Inbound),
 				opentracingmw.New(logger, t, opentracingmw.Server),
@@ -192,8 +193,8 @@ func main() {
 		var listener net.Listener
 		g.Add(func() error {
 			var err error
-			upstreams := director.NewUpstreams(20)
-			d := director.New(logger, r.GetPathInfo, outlierMonitor.IsServiceable, l.GetSourceInstance, e.GetServiceNodes, upstreams, proxy.DefaultUpstreamDialers, &tlsConfig, director.LeastLoad,
+			upstreams := director.NewUpstreams(director.PerNode, 20)
+			d := director.New(logger, r.GetPathInfo, outlierMonitor.IsServiceable, l.GetSourceInstance, e.GetServiceNodes, upstreams, director.DefaultUpstreamDialers, simpleDialer, nil, director.LeastLoad,
 				retry.New(logger, retry.RetryableRead5XX, retry.NewUpstream, outlierMonitor),
 				istio.New(nodeID.String(), reporter.C, istio.Outbound),
 				opentracingmw.New(logger, t, opentracingmw.Client),
