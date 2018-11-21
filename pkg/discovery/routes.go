@@ -40,6 +40,9 @@ type (
 		Service   *api.Service
 		Operation *api.Operation
 	}
+
+	// Params is an alias that allows returning parameter values by name.
+	Params []routerstore.Param
 )
 
 var (
@@ -161,17 +164,17 @@ func (r *Routes) GetService(name string) (*api.Service, bool) {
 	return service, ok
 }
 
-func (r *Routes) GetPathInfo(method, path string) (*PathInfo, error) {
+func (r *Routes) GetPathInfo(method, path string) (*PathInfo, Params, error) {
 	ptr := atomic.LoadPointer(&r.router)
 	routes := (*routerstore.RouteMux)(ptr)
 	var result routerstore.Result
 	err := routes.Match(method, path, &result)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	serviceDesc := result.Data.(*PathInfo)
-	return serviceDesc, nil
+	return serviceDesc, result.Params, nil
 }
 
 func (r *Routes) loadMiddleware(policies []api.Configuration) ([]proxy.Middleware, error) {
@@ -191,4 +194,14 @@ func (r *Routes) loadMiddleware(policies []api.Configuration) ([]proxy.Middlewar
 	}
 
 	return middlewares, nil
+}
+
+// Get returns the path parameter value for a given name.
+func (p Params) Get(name string) string {
+	for _, parameter := range p {
+		if parameter.Name == name {
+			return parameter.Value
+		}
+	}
+	return ""
 }

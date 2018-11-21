@@ -39,6 +39,7 @@ type ProxyInfo struct {
 	Destination *api.ServiceInstance
 	Node        *api.Node
 	Port        *api.Port
+	URIParams   discovery.Params
 	APIKey      string
 	Version     string
 	Authorization
@@ -52,7 +53,7 @@ type Authorization struct {
 }
 
 type ServiceChecker func(proxyInfo *ProxyInfo) bool
-type PathInfoFn func(method, path string) (*discovery.PathInfo, error)
+type PathInfoFn func(method, path string) (*discovery.PathInfo, discovery.Params, error)
 type SourceInstanceFn func(remoteAddr net.Addr, headers proxy.Headers) (*api.ServiceInstance, error)
 type DestinationNodesFn func(service string) (*discovery.ServiceNodes, error)
 type ConnectionChecker func(conn net.Conn, pathInfo *discovery.PathInfo) error
@@ -142,7 +143,7 @@ func (d *Director) Direct(conn net.Conn, headers proxy.Headers) (proxy.Target, e
 
 	//fmt.Printf("method = %s; path = %s\n", method, path)
 
-	pathInfo, err := d.pathInfo(method, path)
+	pathInfo, params, err := d.pathInfo(method, path)
 	if err != nil {
 		if err == routerstore.ErrNotFound {
 			return proxy.Target{}, proxy.ErrNotFound
@@ -169,6 +170,7 @@ func (d *Director) Direct(conn net.Conn, headers proxy.Headers) (proxy.Target, e
 		Service:   pathInfo.Service,
 		Operation: pathInfo.Operation,
 		Source:    source,
+		URIParams: params,
 	}
 
 	serviceNodes, err := d.destinationNodes(pathInfo.Service.Name)
